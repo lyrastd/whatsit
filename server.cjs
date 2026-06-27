@@ -402,6 +402,35 @@ var CATEGORY_PLACEHOLDERS = {
   logos: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80",
   default: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80"
 };
+async function fetchWikipediaExactPageImage(title, lang, allowSvg = false) {
+  const cleanTitle = title.trim();
+  try {
+    const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=original&titles=${encodeURIComponent(cleanTitle)}&origin=*`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "OQueEQuizApp/1.0 (shla2701@gmail.com) Node/Fetch"
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const pages = data.query?.pages;
+      if (pages) {
+        for (const pageId in pages) {
+          const page = pages[pageId];
+          const originalUrl = page?.original?.source;
+          if (originalUrl && (originalUrl.startsWith("http://") || originalUrl.startsWith("https://"))) {
+            if (allowSvg || !originalUrl.toLowerCase().endsWith(".svg")) {
+              return originalUrl;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`Wikipedia exact [${lang}] fetch failed for "${cleanTitle}":`, err);
+  }
+  return null;
+}
 async function fetchWikipediaPageImage(query, lang, allowSvg = false) {
   const cleanQuery = query.toLowerCase().trim();
   try {
@@ -469,6 +498,20 @@ async function fetchImageForQuestion(query, category, fallbackQuery) {
   const allowSvg = category === "bandeiras" || category === "logos";
   if (!cleanQuery) {
     return CATEGORY_PLACEHOLDERS[category || "default"] || CATEGORY_PLACEHOLDERS.default;
+  }
+  try {
+    const exactEnUrl = await fetchWikipediaExactPageImage(query, "en", allowSvg);
+    if (exactEnUrl) return exactEnUrl;
+  } catch (err) {
+    console.error(`Wikipedia exact EN fetch failed for "${query}":`, err);
+  }
+  if (fallbackQuery) {
+    try {
+      const exactPtUrl = await fetchWikipediaExactPageImage(fallbackQuery, "pt", allowSvg);
+      if (exactPtUrl) return exactPtUrl;
+    } catch (err) {
+      console.error(`Wikipedia exact PT fetch failed for "${fallbackQuery}":`, err);
+    }
   }
   try {
     const wikiEnUrl = await fetchWikipediaPageImage(cleanQuery, "en", allowSvg);
