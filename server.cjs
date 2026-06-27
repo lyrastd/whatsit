@@ -402,7 +402,7 @@ var CATEGORY_PLACEHOLDERS = {
   logos: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80",
   default: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80"
 };
-async function fetchWikipediaPageImage(query, lang) {
+async function fetchWikipediaPageImage(query, lang, allowSvg = false) {
   const cleanQuery = query.toLowerCase().trim();
   try {
     const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&generator=search&piprop=original&gsrsearch=${encodeURIComponent(cleanQuery)}&gsrlimit=5&origin=*`;
@@ -419,7 +419,7 @@ async function fetchWikipediaPageImage(query, lang) {
         for (const page of sortedPages) {
           const originalUrl = page?.original?.source;
           if (originalUrl && (originalUrl.startsWith("http://") || originalUrl.startsWith("https://"))) {
-            if (!originalUrl.toLowerCase().endsWith(".svg")) {
+            if (allowSvg || !originalUrl.toLowerCase().endsWith(".svg")) {
               return originalUrl;
             }
           }
@@ -431,7 +431,7 @@ async function fetchWikipediaPageImage(query, lang) {
   }
   return null;
 }
-async function fetchWikimediaImage(query) {
+async function fetchWikimediaImage(query, allowSvg = false) {
   const cleanQuery = query.toLowerCase().trim();
   try {
     const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=pageimages&generator=search&piprop=original&gsrsearch=${encodeURIComponent(cleanQuery)}&gsrlimit=8&origin=*`;
@@ -448,7 +448,7 @@ async function fetchWikimediaImage(query) {
         for (const page of sortedPages) {
           const originalUrl = page?.original?.source;
           if (originalUrl && (originalUrl.startsWith("http://") || originalUrl.startsWith("https://"))) {
-            if (!originalUrl.toLowerCase().endsWith(".svg")) {
+            if (allowSvg || !originalUrl.toLowerCase().endsWith(".svg")) {
               return originalUrl;
             }
           }
@@ -461,42 +461,41 @@ async function fetchWikimediaImage(query) {
   return null;
 }
 async function fetchImageForQuestion(query, category, fallbackQuery) {
-  const cleanQuery = query.toLowerCase().trim().replace(/[^a-zA-Z0-9\s]/g, "");
+  const cleanString = (str) => {
+    return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s-]/g, "").trim();
+  };
+  const cleanQuery = cleanString(query);
+  const cleanFallback = fallbackQuery ? cleanString(fallbackQuery) : "";
+  const allowSvg = category === "bandeiras" || category === "logos";
   if (!cleanQuery) {
     return CATEGORY_PLACEHOLDERS[category || "default"] || CATEGORY_PLACEHOLDERS.default;
   }
   try {
-    const wikiEnUrl = await fetchWikipediaPageImage(cleanQuery, "en");
+    const wikiEnUrl = await fetchWikipediaPageImage(cleanQuery, "en", allowSvg);
     if (wikiEnUrl) return wikiEnUrl;
   } catch (err) {
     console.error(`Wikipedia EN PageImages failed for "${cleanQuery}":`, err);
   }
-  if (fallbackQuery) {
-    const cleanFallback = fallbackQuery.toLowerCase().trim().replace(/[^a-zA-Z0-9\s]/g, "");
-    if (cleanFallback && cleanFallback !== cleanQuery) {
-      try {
-        const wikiPtUrl = await fetchWikipediaPageImage(cleanFallback, "pt");
-        if (wikiPtUrl) return wikiPtUrl;
-      } catch (err) {
-        console.error(`Wikipedia PT PageImages failed for "${cleanFallback}":`, err);
-      }
+  if (cleanFallback && cleanFallback !== cleanQuery) {
+    try {
+      const wikiPtUrl = await fetchWikipediaPageImage(cleanFallback, "pt", allowSvg);
+      if (wikiPtUrl) return wikiPtUrl;
+    } catch (err) {
+      console.error(`Wikipedia PT PageImages failed for "${cleanFallback}":`, err);
     }
   }
   try {
-    const wikiPtUrlAlt = await fetchWikipediaPageImage(cleanQuery, "pt");
+    const wikiPtUrlAlt = await fetchWikipediaPageImage(cleanQuery, "pt", allowSvg);
     if (wikiPtUrlAlt) return wikiPtUrlAlt;
   } catch (err) {
     console.error(`Wikipedia PT PageImages alternative failed for "${cleanQuery}":`, err);
   }
-  if (fallbackQuery) {
-    const cleanFallback = fallbackQuery.toLowerCase().trim().replace(/[^a-zA-Z0-9\s]/g, "");
-    if (cleanFallback && cleanFallback !== cleanQuery) {
-      try {
-        const wikiEnUrlAlt = await fetchWikipediaPageImage(cleanFallback, "en");
-        if (wikiEnUrlAlt) return wikiEnUrlAlt;
-      } catch (err) {
-        console.error(`Wikipedia EN PageImages alternative failed for "${cleanFallback}":`, err);
-      }
+  if (cleanFallback && cleanFallback !== cleanQuery) {
+    try {
+      const wikiEnUrlAlt = await fetchWikipediaPageImage(cleanFallback, "en", allowSvg);
+      if (wikiEnUrlAlt) return wikiEnUrlAlt;
+    } catch (err) {
+      console.error(`Wikipedia EN PageImages alternative failed for "${cleanFallback}":`, err);
     }
   }
   try {
@@ -519,20 +518,17 @@ async function fetchImageForQuestion(query, category, fallbackQuery) {
     console.error(`Unsplash NAPI fetch failed for "${cleanQuery}":`, err);
   }
   try {
-    const wikimediaUrl = await fetchWikimediaImage(cleanQuery);
+    const wikimediaUrl = await fetchWikimediaImage(cleanQuery, allowSvg);
     if (wikimediaUrl) return wikimediaUrl;
   } catch (wikiErr) {
     console.error(`Wikimedia search fallback failed for "${cleanQuery}":`, wikiErr);
   }
-  if (fallbackQuery) {
-    const cleanFallback = fallbackQuery.toLowerCase().trim().replace(/[^a-zA-Z0-9\s]/g, "");
-    if (cleanFallback && cleanFallback !== cleanQuery) {
-      try {
-        const wikimediaUrl = await fetchWikimediaImage(cleanFallback);
-        if (wikimediaUrl) return wikimediaUrl;
-      } catch (wikiErr) {
-        console.error(`Wikimedia search fallback failed for "${cleanFallback}":`, wikiErr);
-      }
+  if (cleanFallback && cleanFallback !== cleanQuery) {
+    try {
+      const wikimediaUrl = await fetchWikimediaImage(cleanFallback, allowSvg);
+      if (wikimediaUrl) return wikimediaUrl;
+    } catch (wikiErr) {
+      console.error(`Wikimedia search fallback failed for "${cleanFallback}":`, wikiErr);
     }
   }
   return CATEGORY_PLACEHOLDERS[category || "default"] || CATEGORY_PLACEHOLDERS.default;
